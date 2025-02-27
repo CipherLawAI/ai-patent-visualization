@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Patent Trends & NVIDIA Innovation Timeline</title>
+    <!-- Include required libraries -->
+    <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/recharts@2.1.9/umd/Recharts.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script src="https://unpkg.com/lodash@4.17.21/lodash.min.js"></script>
+    <style>
+        body { 
+            margin: 0; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        #root { 
+            width: 100%; 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script>
+import React, { useState, useEffect } from 'react';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, ReferenceLine, Label, Scatter, ScatterChart, ZAxis, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
+import Papa from 'papaparse';
+import _ from 'lodash';
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
+const AiPatentTrendsVisualization = () => {
+  const [data, setData] = useState({
+    monthlyData: [],
+    annualTrends: [],
+    aiPercentages: [],
+    projections: [],
+    categories: [],
+    productReleases: [],
+    aiCategories: [],
+    aiPatentsByCategory: {},
+    isLoading: true,
+    error: null
+  });
+  const [activeView, setActiveView] = useState('annual');
+  const [showProjections, setShowProjections] = useState(true);
+  const [showPublicationDelay, setShowPublicationDelay] = useState(false);
+  const [selectedCategories, setSelectedCategories] = useState([]);
+  const [showEvents, setShowEvents] = useState(true);
+  const [showAiPercentage, setShowAiPercentage] = useState(false);
+  const [startYear, setStartYear] = useState(2006);
+  const [detailLevel, setDetailLevel] = useState('subclass');
+  const [analysisMode, setAnalysisMode] = useState('trends'); // trends, correlation, categories
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Color mapping for AI-relevant CPC categories
+  const categoryColors = {
+    // AI & ML Specific
+    'G06N': '#8E24AA',
+    // Computer Systems Based on Models - Purple
+
+    // Computer Vision & Image Processing
+    'G06T': '#3949AB',
+    // Image Data Processing - Indigo
+    'G06V': '#1E88E5',
+    // Image Analysis - Blue
+    'G06K': '#039BE5',
+    // Recognition/Data Presentation - Light Blue
+
+    // Computing & Processing
+    'G06F': '#00ACC1',
+    // Electric Digital Data Processing - Teal
+    'G11C': '#00897B',
+    // Memory & Storage - Dark Teal
+
+    // Networks & Communication
+    'H04L': '#FFA000',
+    // Digital Information Transmission - Amber
+    'H04N': '#F57C00',
+    // Pictorial Communication - Orange
+    'H04W': '#FF5722',
+    // Wireless Communication Networks - Deep Orange
+
+    // Other AI-relevant
+    'G01C': '#7CB342',
+    // Navigation/Measurement - Light Green
+    'G05D': '#43A047',
+    // Control Systems - Green
+    'G09G': '#C0CA33',
+    // Display Control - Lime
+    'G10L': '#AFB42B' // Speech/Audio Processing - Light Lime
+  };
+
+  // Get color for a category
+  const getColorForCategory = category => {
+    if (categoryColors[category]) return categoryColors[category];
+
+    // For unlisted categories, derive color from the section (first letter)
+    const section = category.charAt(0);
+
+    // Base colors for sections
+    const sectionBaseColors = {
+      'G': '#3F51B5',
+      // Indigo for Physics
+      'H': '#F44336',
+      // Red for Electricity
+      'A': '#4CAF50',
+      // Green for Human Necessities
+      'B': '#8BC34A',
+      // Light Green for Operations
+      'C': '#CDDC39',
+      // Lime for Chemistry
+      'F': '#FFC107' // Amber for Mechanical Engineering
+    };
+    return sectionBaseColors[section] || '#757575';
+  };
+
+  // Descriptions for CPC categories focused on AI relevance
+  const categoryDescriptions = {
+    // AI/ML focused
+    'G06N': 'Computer Systems Based on AI/ML Models',
+    'G06N3': 'Neural Networks & Biological Models',
+    'G06N5': 'Knowledge-Based Models',
+    'G06N7': 'Probabilistic & Fuzzy Logic Models',
+    'G06N20': 'Machine Learning Models',
+    // Computer Vision / Image Processing
+    'G06T': 'Image Data Processing & Computer Graphics',
+    'G06T1': 'GPU-Based Processing',
+    'G06T7': 'Image Analysis & Recognition',
+    'G06T9': 'Image Compression/Coding',
+    'G06T15': '3D Rendering/Ray Tracing',
+    'G06K9': 'Pattern Recognition & Image Processing',
+    'G06V': 'Image/Video Recognition',
+    // Computing 
+    'G06F': 'Electric Digital Data Processing',
+    'G06F9': 'Program Execution/Scheduling',
+    'G06F15': 'Digital Computers',
+    'G06F16': 'Information Retrieval/Databases',
+    'G06F17': 'Digital Computing',
+    'G06F30': 'Design/Simulation',
+    'G06F40': 'Natural Language Processing',
+    'G11C': 'Memory & Storage Systems',
+    // Networks & Communication
+    'H04L': 'Digital Information Transmission',
+    'H04N': 'Pictorial Communication (Video)',
+    'H04W': 'Wireless Communication Networks',
+    // Other AI-relevant
+    'G01C': 'Measuring Distance/Navigation',
+    'G05D': 'Control Systems (Automation)',
+    'G09G': 'Display Control',
+    'G10L': 'Speech/Audio Processing',
+    // Main sections (for fallback)
+    'G': 'Physics (Includes Computing/AI)',
+    'H': 'Electricity (Includes Communications)',
+    'A': 'Human Necessities',
+    'B': 'Operations & Transportation',
+    'C': 'Chemistry & Metallurgy',
+    'F': 'Mechanical Engineering'
+  };
+
+  // Get description for a CPC category
+  const getDescriptionForCategory = category => {
+    // If we have a specific description, use it
+    if (categoryDescriptions[category]) return categoryDescriptions[category];
+
+    // Try parent category (e.g., 'G06F16/00' -> 'G06F16')
+    const parentCategory = category.split('/')[0];
+    if (categoryDescriptions[parentCategory]) return categoryDescriptions[parentCategory];
+
+    // Try basic subclass (e.g., 'G06F16/9535' -> 'G06F')
+    const subclass = category.substring(0, 4);
+    if (categoryDescriptions[subclass]) return categoryDescriptions[subclass];
+
+    // Otherwise, use the section description (first letter)
+    const section = category.charAt(0);
+    return categoryDescriptions[section] || 'Other';
+  };
+
+  // NVIDIA's AI-focused product releases
+  const nvidiaAiReleases = [{
+    date: "2006-11",
+    name: "CUDA Platform",
+    description: "First CUDA platform for general-purpose GPU computing"
+  }, {
+    date: "2008-06",
+    name: "Tesla Computing",
+    description: "First dedicated compute processors for AI & HPC"
+  }, {
+    date: "2010-03",
+    name: "Fermi Architecture",
+    description: "First architecture designed for GPGPU computing"
+  }, {
+    date: "2012-05",
+    name: "Kepler GK110",
+    description: "First GPU with Dynamic Parallelism for AI"
+  }, {
+    date: "2014-09",
+    name: "Maxwell Architecture",
+    description: "Improved efficiency for deep learning training"
+  }, {
+    date: "2016-04",
+    name: "DGX-1",
+    description: "First purpose-built AI supercomputer"
+  }, {
+    date: "2016-05",
+    name: "Pascal Architecture",
+    description: "16nm GPUs with 16-bit floating point for AI"
+  }, {
+    date: "2017-05",
+    name: "Volta & Tensor Cores",
+    description: "First dedicated AI acceleration units (Tensor Cores)"
+  }, {
+    date: "2017-10",
+    name: "CUDA 9 & cuDNN 7",
+    description: "Enhanced deep learning libraries"
+  }, {
+    date: "2018-08",
+    name: "Turing & RTX",
+    description: "AI-powered ray tracing technology"
+  }, {
+    date: "2019-05",
+    name: "RAPIDS",
+    description: "Open-source data science libraries accelerated by NVIDIA GPUs"
+  }, {
+    date: "2020-05",
+    name: "Ampere A100",
+    description: "Third-gen Tensor Cores with TF32 format for AI"
+  }, {
+    date: "2021-04",
+    name: "NVIDIA Grace CPU",
+    description: "First ARM-based CPU for giant-scale AI & HPC"
+  }, {
+    date: "2022-03",
+    name: "Hopper Architecture",
+    description: "Fourth-gen Tensor Cores with Transformer Engine"
+  }, {
+    date: "2022-09",
+    name: "DLSS 3",
+    description: "AI-powered frame generation for gaming"
+  }, {
+    date: "2023-03",
+    name: "H100 GPU",
+    description: "Specialized for AI with Transformer Engine"
+  }];
+
+  // Keywords for identifying AI-related patents
+  const aiKeywords = ['artificial intelligence', 'machine learning', 'neural network', 'deep learning', 'computer vision', 'natural language processing', 'nlp', 'reinforcement learning', 'ai', 'ml', 'classifier', 'classification algorithm', 'predictive model', 'training data', 'inference', 'tensor', 'cuda', 'gpu computing', 'parallel processing', 'pattern recognition', 'cognitive', 'autonomous', 'computer vision', 'image recognition', 'speech recognition', 'language model', 'generative', 'transformer'];
+
+  // CPC codes most related to AI
+  const aiRelatedCpcCodes = {
+    // Primary AI-related codes
+    'G06N': true,
+    // Computer Systems Based on Computational Models
+
+    // Secondary AI-related codes
+    'G06F16': true,
+    // Information Retrieval
+    'G06F17': true,
+    // Digital Computing
+    'G06F18': true,
+    // Specific Functions
+    'G06F30': true,
+    // Design & Simulation
+    'G06F40': true,
+    // Natural Language Processing
+    'G06K9': true,
+    // Pattern Recognition
+    'G06T': true,
+    // Image Data Processing
+    'G10L': true,
+    // Speech/Audio Analysis
+    'H04L': true,
+    // Digital Information Transmission
+    'G05D1': true // Autonomous Navigation
+  };
+  useEffect(() => {
+    const fetchAndProcessData = async () => {
+      try {
+        setIsLoading(true);
+        const response = await window.fs.readFile('20250226_231550_English.csv', {
+          encoding: 'utf8'
+        });
+        const results = Papa.parse(response, {
+          header: true,
+          skipEmptyLines: true,
+          dynamicTyping: true
+        });
+
+        // Process the data with focus on AI-related patents
+        const processedData = processPatentData(results.data);
+        setData(processedData);
+
+        // Default to showing top AI-related categories
+        const defaultCategories = ['G06N', 'G06T', 'G06F', 'H04L', 'G06V'].filter(cat => processedData.categories.includes(cat));
+        setSelectedCategories(defaultCategories);
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Error loading data:', error);
+        setIsLoading(false);
+      }
+    };
+    fetchAndProcessData();
+  }, []);
+
+  // Extract CPC codes at different levels of detail
+  const extractCpcCode = (cpcString, level) => {
+    if (!cpcString) return [];
+    const cpcs = String(cpcString).split(',').map(c => c.trim());
+
+    // Process each CPC code
+    return cpcs.map(cpc => {
+      switch (level) {
+        case 'section':
+          // Just the first letter (e.g., 'G')
+          return cpc.charAt(0);
+        case 'class':
+          // First three characters (e.g., 'G06')
+          return cpc.substring(0, 3);
+        case 'subclass':
+          // First four characters (e.g., 'G06F')
+          const match = cpc.match(/^([A-Z]\d{2}[A-Z])/);
+          return match ? match[1] : cpc.substring(0, 4);
+        case 'group':
+          // Includes group number (e.g., 'G06F3/00')
+          return cpc.split('/')[0];
+        default:
+          return cpc.charAt(0);
+      }
+    });
+  };
+
+  // Check if a patent is AI-related based on CPC codes or text content
+  const isAiRelated = row => {
+    // Check CPC codes
+    const mainCpc = row['CPC Main'] ? extractCpcCode(row['CPC Main'], 'group') : [];
+    const otherCpc = row['CPC'] ? extractCpcCode(row['CPC'], 'group') : [];
+    const allCpcs = [...mainCpc, ...otherCpc];
+
+    // Check if any CPC code starts with an AI-related prefix
+    const hasCpcMatch = allCpcs.some(code => {
+      return Object.keys(aiRelatedCpcCodes).some(aiCode => code.startsWith(aiCode));
+    });
+    if (hasCpcMatch) return true;
+
+    // Check title and first claim for AI keywords
+    const title = String(row['Title'] || '').toLowerCase();
+    const claim = String(row['First Claim'] || '').toLowerCase();
+    const textContent = title + ' ' + claim;
+    return aiKeywords.some(keyword => textContent.includes(keyword.toLowerCase()));
+  };
+
+  // Process patent data focused on AI
+  const processPatentData = rawData => {
+    // Identify AI-related patents
+    const aiPatents = rawData.filter(isAiRelated);
+    console.log(`AI-related patents: ${aiPatents.length} out of ${rawData.length}`);
+
+    // Count occurrences of each CPC code in AI-related patents
+    const cpcCounts = {};
+    aiPatents.forEach(row => {
+      if (row['CPC Main']) {
+        const cpcCodes = extractCpcCode(row['CPC Main'], detailLevel);
+        cpcCodes.forEach(code => {
+          cpcCounts[code] = (cpcCounts[code] || 0) + 1;
+        });
+      }
+    });
+
+    // Sort categories by frequency and get top 20
+    const topCategories = Object.entries(cpcCounts).sort((a, b) => b[1] - a[1]).slice(0, 20).map(([code]) => code);
+
+    // Parse dates and group by month
+    const parseDate = dateStr => {
+      if (!dateStr) return null;
+      const parts = String(dateStr).split('-');
+      if (parts.length !== 3) return null;
+      return new Date(`${parts[0]}-${parts[1]}-${parts[2]}`);
+    };
+
+    // Group all patents by month/year
+    const allPatentsByMonth = {};
+    const aiPatentsByMonth = {};
+
+    // Process all patents to get totals by month
+    rawData.forEach(row => {
+      const date = parseDate(row['Application/Filing Date']);
+      if (!date) return;
+      const yearMonth = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+      if (!allPatentsByMonth[yearMonth]) {
+        allPatentsByMonth[yearMonth] = 0;
+      }
+      allPatentsByMonth[yearMonth]++;
+    });
+
+    // Group AI patents by month
+    aiPatents.forEach(row => {
+      const date = parseDate(row['Application/Filing Date']);
+      if (!date) return;
+      const cpcCodes = row['CPC Main'] ? extractCpcCode(row['CPC Main'], detailLevel) : [];
+      // Filter to top categories
+      const relevantCodes = cpcCodes.filter(code => topCategories.includes(code));
+      const yearMonth = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+      if (!aiPatentsByMonth[yearMonth]) {
+        aiPatentsByMonth[yearMonth] = {};
+        topCategories.forEach(cat => aiPatentsByMonth[yearMonth][cat] = 0);
+        aiPatentsByMonth[yearMonth].total = 0;
+      }
+
+      // Increment counters for each relevant CPC code
+      relevantCodes.forEach(code => {
+        aiPatentsByMonth[yearMonth][code]++;
+      });
+
+      // Also track total AI patents
+      aiPatentsByMonth[yearMonth].total++;
+    });
+
+    // Create monthly timeline data
+    const timelineData = Object.keys(aiPatentsByMonth).sort().map(yearMonth => {
+      const entry = {
+        date: yearMonth,
+        aiTotal: aiPatentsByMonth[yearMonth].total,
+        allTotal: allPatentsByMonth[yearMonth] || 0
+      };
+
+      // Calculate AI percentage
+      entry.aiPercentage = entry.allTotal > 0 ? entry.aiTotal / entry.allTotal * 100 : 0;
+
+      // Add individual category counts
+      topCategories.forEach(cat => {
+        entry[cat] = aiPatentsByMonth[yearMonth][cat] || 0;
+      });
+      return entry;
+    });
+
+    // Calculate annual trends
+    const yearlyData = {};
+    const yearlyTotals = {};
+    timelineData.forEach(entry => {
+      const year = entry.date.substring(0, 4);
+      if (!yearlyData[year]) {
+        yearlyData[year] = {};
+        topCategories.forEach(cat => yearlyData[year][cat] = 0);
+        yearlyData[year].aiTotal = 0;
+        yearlyData[year].allTotal = 0;
+      }
+      topCategories.forEach(cat => {
+        yearlyData[year][cat] += entry[cat];
+      });
+      yearlyData[year].aiTotal += entry.aiTotal;
+      yearlyData[year].allTotal += entry.allTotal;
+    });
+    const annualTrends = Object.keys(yearlyData).sort().map(year => ({
+      year,
+      ...yearlyData[year],
+      aiPercentage: yearlyData[year].allTotal > 0 ? yearlyData[year].aiTotal / yearlyData[year].allTotal * 100 : 0
+    }));
+
+    // Calculate projections for 2024 and 2025
+    const projections = calculateProjections(annualTrends, topCategories);
+
+    // Adjust data for publication delay
+    const adjustedData = calculateAdjustedData(timelineData, topCategories);
+
+    // Calculate correlation with NVIDIA releases
+    const releaseCorrelation = calculateReleaseCorrelation(timelineData, nvidiaAiReleases);
+    return {
+      monthlyData: timelineData,
+      annualTrends,
+      projections,
+      adjustedData,
+      categories: topCategories,
+      aiCategories: topCategories.filter(cat => aiRelatedCpcCodes[cat] || cat === 'G06N'),
+      productReleases: nvidiaAiReleases,
+      releaseCorrelation
+    };
+  };
+
+  // Calculate projections for future years
+  const calculateProjections = (annualData, categories) => {
+    if (annualData.length < 5) return [];
+
+    // Use the last 5 years for projection
+    const lastFiveYears = annualData.slice(-5);
+
+    // Calculate growth rates
+    const growthRates = {};
+    categories.forEach(cat => {
+      let totalGrowth = 0;
+      let count = 0;
+      for (let i = 1; i < lastFiveYears.length; i++) {
+        const current = lastFiveYears[i][cat];
+        const previous = lastFiveYears[i - 1][cat];
+        if (previous > 0) {
+          const growth = (current - previous) / previous;
+          totalGrowth += growth;
+          count++;
+        }
+      }
+      growthRates[cat] = count > 0 ? totalGrowth / count : 0;
+    });
+
+    // Also calculate AI total growth rate
+    let totalAiGrowth = 0;
+    let aiGrowthCount = 0;
+    for (let i = 1; i < lastFiveYears.length; i++) {
+      const current = lastFiveYears[i].aiTotal;
+      const previous = lastFiveYears[i - 1].aiTotal;
+      if (previous > 0) {
+        const growth = (current - previous) / previous;
+        totalAiGrowth += growth;
+        aiGrowthCount++;
+      }
+    }
+    const aiGrowthRate = aiGrowthCount > 0 ? totalAiGrowth / aiGrowthCount : 0;
+
+    // Get latest year as base
+    const latestYear = parseInt(annualData[annualData.length - 1].year);
+    const latestData = annualData[annualData.length - 1];
+
+    // Project next 2 years
+    const projections = [];
+    for (let i = 1; i <= 2; i++) {
+      const projYear = latestYear + i;
+      const projection = {
+        year: String(projYear),
+        projected: true,
+        aiTotal: Math.round(latestData.aiTotal * Math.pow(1 + aiGrowthRate, i)),
+        allTotal: Math.round(latestData.allTotal * Math.pow(1 + aiGrowthRate, i)) // Assuming similar growth
+      };
+
+      // Project category values
+      categories.forEach(cat => {
+        const baseValue = i === 1 ? latestData[cat] : projections[0][cat];
+        projection[cat] = Math.round(baseValue * (1 + growthRates[cat]));
+        // Ensure no negative values
+        projection[cat] = Math.max(0, projection[cat]);
+      });
+
+      // Calculate AI percentage
+      projection.aiPercentage = projection.allTotal > 0 ? projection.aiTotal / projection.allTotal * 100 : 0;
+      projections.push(projection);
+    }
+    return projections;
+  };
+
+  // Calculate 18-month adjusted data
+  const calculateAdjustedData = (monthlyData, categories) => {
+    const adjustedData = [];
+    const dateMap = {};
+
+    // Create a lookup map for easy access
+    monthlyData.forEach(entry => {
+      dateMap[entry.date] = entry;
+    });
+
+    // For each date, adjust for 18-month delay
+    monthlyData.forEach(monthData => {
+      const publishDate = new Date(monthData.date.replace('-', '/'));
+
+      // Calculate filing date that would be published on this date (18 months earlier)
+      const filingDate = new Date(publishDate);
+      filingDate.setMonth(filingDate.getMonth() - 18);
+      const filingYearMonth = `${filingDate.getFullYear()}-${(filingDate.getMonth() + 1).toString().padStart(2, '0')}`;
+      const adjusted = {
+        date: monthData.date,
+        filingDate: filingYearMonth
+      };
+
+      // Find the corresponding filing data
+      const filingData = dateMap[filingYearMonth];
+
+      // Add category data
+      categories.forEach(cat => {
+        adjusted[`${cat}_adjusted`] = filingData ? filingData[cat] : 0;
+        adjusted[cat] = monthData[cat]; // Keep original data too
+      });
+
+      // Add totals
+      adjusted.aiTotal = monthData.aiTotal;
+      adjusted.aiTotal_adjusted = filingData ? filingData.aiTotal : 0;
+      adjusted.allTotal = monthData.allTotal;
+      adjusted.allTotal_adjusted = filingData ? filingData.allTotal : 0;
+      adjusted.aiPercentage = monthData.aiPercentage;
+      adjusted.aiPercentage_adjusted = filingData ? filingData.aiPercentage : 0;
+      adjustedData.push(adjusted);
+    });
+    return adjustedData;
+  };
+
+  // Calculate correlation between patent activity and NVIDIA releases
+  const calculateReleaseCorrelation = (monthlyData, releases) => {
+    // Make a map of monthly data for easy lookup
+    const monthlyMap = {};
+    monthlyData.forEach(month => {
+      monthlyMap[month.date] = month;
+    });
+    return releases.map(release => {
+      const releaseParts = release.date.split('-');
+      const releaseYear = parseInt(releaseParts[0]);
+      const releaseMonth = parseInt(releaseParts[1]);
+
+      // Calculate 6 months before and after
+      const prePeriod = [];
+      const postPeriod = [];
+      for (let i = 1; i <= 6; i++) {
+        // Pre-release month
+        let preYear = releaseYear;
+        let preMonth = releaseMonth - i;
+        if (preMonth <= 0) {
+          preMonth += 12;
+          preYear -= 1;
+        }
+        const preMonthStr = `${preYear}-${preMonth.toString().padStart(2, '0')}`;
+        prePeriod.push(preMonthStr);
+
+        // Post-release month
+        let postYear = releaseYear;
+        let postMonth = releaseMonth + i;
+        if (postMonth > 12) {
+          postMonth -= 12;
+          postYear += 1;
+        }
+        const postMonthStr = `${postYear}-${postMonth.toString().padStart(2, '0')}`;
+        postPeriod.push(postMonthStr);
+      }
+
+      // Calculate averages
+      const preData = prePeriod.map(month => monthlyMap[month]).filter(Boolean);
+      const postData = postPeriod.map(month => monthlyMap[month]).filter(Boolean);
+      const preAvg = preData.length > 0 ? preData.reduce((sum, month) => sum + month.aiTotal, 0) / preData.length : 0;
+      const postAvg = postData.length > 0 ? postData.reduce((sum, month) => sum + month.aiTotal, 0) / postData.length : 0;
+      const change = preAvg > 0 ? (postAvg - preAvg) / preAvg * 100 : 0;
+      return {
+        ...release,
+        preAverage: preAvg,
+        postAverage: postAvg,
+        percentChange: change
+      };
+    });
+  };
+
+  // Filter data based on the selected view and year
+  const getFilteredData = () => {
+    let filteredData = [];
+    if (activeView === 'annual') {
+      // Annual data with optional projections
+      filteredData = [...data.annualTrends];
+      if (showProjections) {
+        filteredData = [...filteredData, ...data.projections];
+      }
+
+      // Filter by start year
+      filteredData = filteredData.filter(item => parseInt(item.year) >= startYear);
+    } else {
+      // Monthly data
+      const startDate = `${startYear}-01`;
+      filteredData = showPublicationDelay ? data.adjustedData.filter(item => item.date >= startDate) : data.monthlyData.filter(item => item.date >= startDate);
+    }
+    return filteredData;
+  };
+
+  // Get patent trend correlation data
+  const getCorrelationData = () => {
+    if (!data.releaseCorrelation) return [];
+    return data.releaseCorrelation.filter(release => parseInt(release.date.split('-')[0]) >= startYear).map(release => ({
+      name: release.name,
+      date: release.date,
+      change: release.percentChange,
+      // Format for display
+      formattedChange: `${Math.round(release.percentChange)}%`,
+      impact: release.percentChange > 20 ? 'high' : release.percentChange > 0 ? 'positive' : 'negative'
+    }));
+  };
+
+  // Get product releases that match the filtered time range
+  const getVisibleProductReleases = () => {
+    if (!showEvents) return [];
+    const filteredData = getFilteredData();
+    if (activeView === 'annual') {
+      // For annual view, get years as strings
+      const years = filteredData.map(item => item.year);
+      return data.productReleases.filter(release => {
+        const releaseYear = release.date.substring(0, 4);
+        return years.includes(releaseYear);
+      });
+    } else {
+      // For monthly view
+      const dates = filteredData.map(item => item.date);
+      const months = [...new Set(dates.map(date => date.substring(0, 7)))];
+      return data.productReleases.filter(release => {
+        const releaseMonth = release.date.substring(0, 7);
+        return months.includes(releaseMonth);
+      });
+    }
+  };
+
+  // Generate dynamic content for the tooltip
+  const CustomTooltip = ({
+    active,
+    payload,
+    label
+  }) => {
+    if (!active || !payload || payload.length === 0) return null;
+    const isAnnual = activeView === 'annual';
+    const dateLabel = isAnnual ? label : label.replace('-', ' ');
+
+    // Check if this date has a product release
+    const releases = data.productReleases.filter(release => {
+      if (isAnnual) {
+        return release.date.startsWith(label);
+      } else {
+        // Match on year-month
+        return release.date.substring(0, 7) === label.substring(0, 7);
+      }
+    });
+    const dataPoint = payload[0].payload;
+    const aiPercentage = dataPoint.aiPercentage ? Math.round(dataPoint.aiPercentage * 10) / 10 : null;
+    return /*#__PURE__*/_jsxs("div", {
+      className: "p-4 bg-white border rounded shadow max-w-md",
+      children: [/*#__PURE__*/_jsx("p", {
+        className: "font-bold mb-2",
+        children: isAnnual ? `Year: ${dateLabel}` : `Date: ${dateLabel}`
+      }), showAiPercentage && aiPercentage !== null && /*#__PURE__*/_jsxs("p", {
+        className: "mb-2",
+        children: [/*#__PURE__*/_jsx("span", {
+          className: "font-medium",
+          children: "AI Patents:"
+        }), " ", Math.round(aiPercentage), "% of total"]
+      }), /*#__PURE__*/_jsx("div", {
+        className: "max-h-64 overflow-y-auto mb-2",
+        children: payload.map((entry, index) => {
+          // Skip adjusted/projected entries and show only selected categories
+          if (!entry.name.includes('_adjusted') && !entry.name.includes('projected') && selectedCategories.includes(entry.name)) {
+            return /*#__PURE__*/_jsxs("div", {
+              className: "mb-1 flex items-center",
+              children: [/*#__PURE__*/_jsx("div", {
+                className: "w-3 h-3 mr-2 rounded-full",
+                style: {
+                  backgroundColor: entry.color
+                }
+              }), /*#__PURE__*/_jsxs("div", {
+                className: "flex-1",
+                children: [/*#__PURE__*/_jsxs("span", {
+                  className: "font-medium",
+                  children: [entry.name, ":"]
+                }), " ", entry.value, /*#__PURE__*/_jsxs("span", {
+                  className: "text-gray-600 text-xs ml-1",
+                  children: ["(", getDescriptionForCategory(entry.name), ")"]
+                })]
+              })]
+            }, index);
+          }
+          return null;
+        })
+      }), releases.length > 0 && /*#__PURE__*/_jsxs("div", {
+        className: "mt-2 border-t pt-2",
+        children: [/*#__PURE__*/_jsx("p", {
+          className: "font-bold text-sm",
+          children: "NVIDIA AI Releases:"
+        }), releases.map((release, index) => /*#__PURE__*/_jsxs("div", {
+          className: "mt-1",
+          children: [/*#__PURE__*/_jsx("p", {
+            className: "text-sm font-medium",
+            children: release.name
+          }), /*#__PURE__*/_jsx("p", {
+            className: "text-xs text-gray-600",
+            children: release.description
+          })]
+        }, index))]
+      })]
+    });
+  };
+
+  // Custom tooltip for the correlation chart
+  const CorrelationTooltip = ({
+    active,
+    payload
+  }) => {
+    if (!active || !payload || payload.length === 0) return null;
+    const data = payload[0].payload;
+    const color = data.change > 20 ? '#4CAF50' : data.change > 0 ? '#2196F3' : '#F44336';
+    return /*#__PURE__*/_jsxs("div", {
+      className: "p-4 bg-white border rounded shadow",
+      children: [/*#__PURE__*/_jsx("p", {
+        className: "font-bold mb-2",
+        children: data.name
+      }), /*#__PURE__*/_jsx("p", {
+        className: "text-sm",
+        children: data.date
+      }), /*#__PURE__*/_jsxs("p", {
+        className: "mt-2",
+        children: [/*#__PURE__*/_jsx("span", {
+          className: "font-medium",
+          children: "Patent Activity Change:"
+        }), /*#__PURE__*/_jsxs("span", {
+          className: "ml-1",
+          style: {
+            color
+          },
+          children: [Math.round(data.change), "%"]
+        })]
+      }), /*#__PURE__*/_jsx("p", {
+        className: "text-xs text-gray-600 mt-1",
+        children: "(6 months after vs. 6 months before release)"
+      })]
+    });
+  };
+
+  // Render event markers for NVIDIA product releases
+  const renderEventMarkers = () => {
+    const visibleReleases = getVisibleProductReleases();
+    if (activeView === 'annual') {
+      return visibleReleases.map((release, index) => {
+        const year = release.date.substring(0, 4);
+        return /*#__PURE__*/_jsx(ReferenceLine, {
+          x: year,
+          stroke: "#76B900" // NVIDIA green
+          ,
+          strokeWidth: 2,
+          strokeDasharray: "3 3",
+          label: /*#__PURE__*/_jsx(Label, {
+            value: release.name,
+            position: "insideTopRight",
+            fill: "#000",
+            fontSize: 12
+          })
+        }, index);
+      });
+    } else {
+      return visibleReleases.map((release, index) => {
+        // For monthly view, we need to find the closest data point
+        const month = release.date.substring(0, 7);
+        const filteredData = getFilteredData();
+        const matchingPoint = filteredData.find(d => d.date.startsWith(month));
+        if (!matchingPoint) return null;
+        return /*#__PURE__*/_jsx(ReferenceLine, {
+          x: matchingPoint.date,
+          stroke: "#76B900" // NVIDIA green
+          ,
+          strokeWidth: 2,
+          strokeDasharray: "3 3",
+          label: /*#__PURE__*/_jsx(Label, {
+            value: release.name,
+            position: "insideTopRight",
+            fill: "#000",
+            fontSize: 10,
+            angle: -45
+          })
+        }, index);
+      });
+    }
+  };
+
+  // Toggle category selection
+  const toggleCategory = category => {
+    if (selectedCategories.includes(category)) {
+      setSelectedCategories(selectedCategories.filter(c => c !== category));
+    } else {
+      setSelectedCategories([...selectedCategories, category]);
+    }
+  };
+
+  // Select top N categories
+  const selectTopCategories = n => {
+    setSelectedCategories(data.categories.slice(0, n));
+  };
+
+  // Select AI-specific categories
+  const selectAiCategories = () => {
+    setSelectedCategories(data.aiCategories || []);
+  };
+
+  // Clear all selected categories
+  const clearCategories = () => {
+    setSelectedCategories([]);
+  };
+
+  // Render the main chart
+  const renderMainChart = () => {
+    switch (analysisMode) {
+      case 'trends':
+        return renderTrendsChart();
+      case 'correlation':
+        return renderCorrelationChart();
+      case 'categories':
+        return renderCategoriesChart();
+      default:
+        return renderTrendsChart();
+    }
+  };
+
+  // Render the trends chart (line/bar chart)
+  const renderTrendsChart = () => {
+    const chartData = getFilteredData();
+    if (activeView === 'annual') {
+      return /*#__PURE__*/_jsxs(ComposedChart, {
+        data: chartData,
+        children: [/*#__PURE__*/_jsx(CartesianGrid, {
+          strokeDasharray: "3 3"
+        }), /*#__PURE__*/_jsx(XAxis, {
+          dataKey: "year",
+          label: {
+            value: 'Year',
+            position: 'insideBottom',
+            offset: -5
+          }
+        }), /*#__PURE__*/_jsx(YAxis, {
+          label: {
+            value: 'Number of AI Patents',
+            angle: -90,
+            position: 'insideLeft'
+          }
+        }), /*#__PURE__*/_jsx(Tooltip, {
+          content: /*#__PURE__*/_jsx(CustomTooltip, {})
+        }), /*#__PURE__*/_jsx(Legend, {}), showAiPercentage && /*#__PURE__*/_jsx(Line, {
+          yAxisId: "right",
+          type: "monotone",
+          dataKey: "aiPercentage",
+          name: "AI % of Total Patents",
+          stroke: "#FF5722",
+          strokeWidth: 2,
+          dot: false
+        }), showAiPercentage && /*#__PURE__*/_jsx(YAxis, {
+          yAxisId: "right",
+          orientation: "right",
+          domain: [0, 100],
+          label: {
+            value: '% of Total Patents',
+            angle: 90,
+            position: 'insideRight'
+          }
+        }), selectedCategories.map(category => /*#__PURE__*/_jsx(Bar, {
+          dataKey: category,
+          name: category,
+          stackId: "a",
+          fill: getColorForCategory(category)
+        }, category)), showProjections && /*#__PURE__*/_jsx(Area, {
+          type: "monotone",
+          dataKey: "projected",
+          name: "Projected",
+          stroke: "none",
+          fill: "rgba(200, 200, 200, 0.2)"
+        }), showEvents && renderEventMarkers()]
+      });
+    } else {
+      return /*#__PURE__*/_jsxs(LineChart, {
+        data: chartData,
+        children: [/*#__PURE__*/_jsx(CartesianGrid, {
+          strokeDasharray: "3 3"
+        }), /*#__PURE__*/_jsx(XAxis, {
+          dataKey: "date",
+          label: {
+            value: 'Date',
+            position: 'insideBottom',
+            offset: -5
+          },
+          tick: {
+            fontSize: 10
+          },
+          angle: -45,
+          textAnchor: "end",
+          height: 80,
+          interval: Math.floor(chartData.length / 20)
+        }), /*#__PURE__*/_jsx(YAxis, {
+          label: {
+            value: 'Number of AI Patents',
+            angle: -90,
+            position: 'insideLeft'
+          }
+        }), /*#__PURE__*/_jsx(Tooltip, {
+          content: /*#__PURE__*/_jsx(CustomTooltip, {})
+        }), /*#__PURE__*/_jsx(Legend, {}), showAiPercentage && /*#__PURE__*/_jsx(Line, {
+          yAxisId: "right",
+          type: "monotone",
+          dataKey: showPublicationDelay ? "aiPercentage_adjusted" : "aiPercentage",
+          name: "AI % of Total Patents",
+          stroke: "#FF5722",
+          strokeWidth: 2,
+          dot: false
+        }), showAiPercentage && /*#__PURE__*/_jsx(YAxis, {
+          yAxisId: "right",
+          orientation: "right",
+          domain: [0, 100],
+          label: {
+            value: '% of Total Patents',
+            angle: 90,
+            position: 'insideRight'
+          }
+        }), selectedCategories.map(category => /*#__PURE__*/_jsx(Line, {
+          type: "monotone",
+          dataKey: showPublicationDelay ? `${category}_adjusted` : category,
+          name: category,
+          stroke: getColorForCategory(category),
+          dot: false,
+          activeDot: {
+            r: 6
+          }
+        }, category)), showEvents && renderEventMarkers()]
+      });
+    }
+  };
+
+  // Render the correlation chart
+  const renderCorrelationChart = () => {
+    const correlationData = getCorrelationData();
+    return /*#__PURE__*/_jsxs(BarChart, {
+      data: correlationData,
+      layout: "vertical",
+      children: [/*#__PURE__*/_jsx(CartesianGrid, {
+        strokeDasharray: "3 3"
+      }), /*#__PURE__*/_jsx(XAxis, {
+        type: "number",
+        domain: [-80, 100],
+        label: {
+          value: 'Change in AI Patent Activity (%)',
+          position: 'insideBottom',
+          offset: -5
+        }
+      }), /*#__PURE__*/_jsx(YAxis, {
+        dataKey: "name",
+        type: "category",
+        width: 150
+      }), /*#__PURE__*/_jsx(Tooltip, {
+        content: /*#__PURE__*/_jsx(CorrelationTooltip, {})
+      }), /*#__PURE__*/_jsx(Legend, {}), /*#__PURE__*/_jsx(Bar, {
+        dataKey: "change",
+        name: "Patent Activity Change",
+        fill: "#8884d8",
+        shape: props => {
+          const {
+            x,
+            y,
+            width,
+            height,
+            value
+          } = props;
+          // Color based on value
+          const color = value > 20 ? '#4CAF50' : value > 0 ? '#2196F3' : '#F44336';
+          return /*#__PURE__*/_jsx("rect", {
+            x: x,
+            y: y,
+            width: width,
+            height: height,
+            fill: color,
+            radius: [0, 4, 4, 0]
+          });
+        }
+      }), /*#__PURE__*/_jsx(ReferenceLine, {
+        x: 0,
+        stroke: "#000"
+      })]
+    });
+  };
+
+  // Render the categories chart
+  const renderCategoriesChart = () => {
+    // Use the most recent year's data
+    const latestYear = data.annualTrends[data.annualTrends.length - 1];
+    if (!latestYear) return null;
+
+    // Format data for radar chart
+    const radarData = data.categories.filter(cat => selectedCategories.includes(cat)).map(category => ({
+      category,
+      description: getDescriptionForCategory(category),
+      value: latestYear[category] || 0,
+      fullMark: Math.max(...data.categories.map(c => latestYear[c] || 0))
+    }));
+    return /*#__PURE__*/_jsxs(RadarChart, {
+      outerRadius: 150,
+      width: 730,
+      height: 350,
+      data: radarData,
+      children: [/*#__PURE__*/_jsx(PolarGrid, {}), /*#__PURE__*/_jsx(PolarAngleAxis, {
+        dataKey: "category"
+      }), /*#__PURE__*/_jsx(PolarRadiusAxis, {}), /*#__PURE__*/_jsx(Radar, {
+        name: "AI Patent Distribution",
+        dataKey: "value",
+        stroke: "#76B900",
+        fill: "#76B900",
+        fillOpacity: 0.6
+      }), /*#__PURE__*/_jsx(Tooltip, {
+        formatter: (value, name, props) => [value, `${props.payload.category}: ${props.payload.description}`]
+      })]
+    });
+  };
+  if (isLoading) {
+    return /*#__PURE__*/_jsx("div", {
+      className: "flex items-center justify-center h-64",
+      children: /*#__PURE__*/_jsx("p", {
+        className: "text-lg font-medium",
+        children: "Loading AI patent data..."
+      })
+    });
+  }
+  return /*#__PURE__*/_jsxs("div", {
+    className: "p-4 bg-white rounded shadow",
+    children: [/*#__PURE__*/_jsx("h2", {
+      className: "text-xl font-bold mb-1",
+      children: "AI Patent Trends & NVIDIA's Innovation Timeline"
+    }), /*#__PURE__*/_jsx("p", {
+      className: "text-sm text-gray-600 mb-4",
+      children: "Interactive visualization of artificial intelligence patent activity correlated with NVIDIA's AI hardware innovations"
+    }), /*#__PURE__*/_jsxs("div", {
+      className: "grid grid-cols-1 md:grid-cols-2 gap-4 mb-4",
+      children: [/*#__PURE__*/_jsxs("div", {
+        children: [/*#__PURE__*/_jsxs("div", {
+          className: "mb-3",
+          children: [/*#__PURE__*/_jsx("label", {
+            className: "font-medium block mb-1",
+            children: "Analysis Mode:"
+          }), /*#__PURE__*/_jsxs("div", {
+            className: "flex space-x-2",
+            children: [/*#__PURE__*/_jsx("button", {
+              className: `px-3 py-1 rounded text-sm ${analysisMode === 'trends' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`,
+              onClick: () => setAnalysisMode('trends'),
+              children: "Time Trends"
+            }), /*#__PURE__*/_jsx("button", {
+              className: `px-3 py-1 rounded text-sm ${analysisMode === 'correlation' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`,
+              onClick: () => setAnalysisMode('correlation'),
+              children: "NVIDIA Impact"
+            }), /*#__PURE__*/_jsx("button", {
+              className: `px-3 py-1 rounded text-sm ${analysisMode === 'categories' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`,
+              onClick: () => setAnalysisMode('categories'),
+              children: "Category Distribution"
+            })]
+          })]
+        }), analysisMode === 'trends' && /*#__PURE__*/_jsxs(_Fragment, {
+          children: [/*#__PURE__*/_jsxs("div", {
+            className: "mb-3",
+            children: [/*#__PURE__*/_jsx("label", {
+              className: "font-medium block mb-1",
+              children: "View:"
+            }), /*#__PURE__*/_jsxs("div", {
+              className: "flex space-x-4",
+              children: [/*#__PURE__*/_jsx("button", {
+                className: `px-3 py-1 rounded ${activeView === 'annual' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`,
+                onClick: () => setActiveView('annual'),
+                children: "Annual"
+              }), /*#__PURE__*/_jsx("button", {
+                className: `px-3 py-1 rounded ${activeView === 'monthly' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`,
+                onClick: () => setActiveView('monthly'),
+                children: "Monthly"
+              })]
+            })]
+          }), /*#__PURE__*/_jsxs("div", {
+            className: "mb-3",
+            children: [/*#__PURE__*/_jsx("label", {
+              className: "font-medium block mb-1",
+              children: "Start Year:"
+            }), /*#__PURE__*/_jsx("select", {
+              className: "border rounded p-1",
+              value: startYear,
+              onChange: e => setStartYear(parseInt(e.target.value)),
+              children: data.annualTrends.filter((_, index) => index % 3 === 0 || index === data.annualTrends.length - 1).map(item => /*#__PURE__*/_jsx("option", {
+                value: item.year,
+                children: item.year
+              }, item.year))
+            })]
+          })]
+        })]
+      }), /*#__PURE__*/_jsx("div", {
+        children: analysisMode === 'trends' && /*#__PURE__*/_jsxs("div", {
+          className: "mb-3",
+          children: [/*#__PURE__*/_jsx("label", {
+            className: "font-medium block mb-1",
+            children: "Options:"
+          }), /*#__PURE__*/_jsxs("div", {
+            className: "space-y-2 text-sm",
+            children: [/*#__PURE__*/_jsxs("div", {
+              className: "flex items-center",
+              children: [/*#__PURE__*/_jsx("input", {
+                type: "checkbox",
+                id: "projections",
+                checked: showProjections,
+                onChange: () => setShowProjections(!showProjections),
+                className: "mr-2",
+                disabled: activeView !== 'annual'
+              }), /*#__PURE__*/_jsx("label", {
+                htmlFor: "projections",
+                className: activeView !== 'annual' ? 'text-gray-400' : '',
+                children: "Show Future Projections"
+              })]
+            }), /*#__PURE__*/_jsxs("div", {
+              className: "flex items-center",
+              children: [/*#__PURE__*/_jsx("input", {
+                type: "checkbox",
+                id: "publicationDelay",
+                checked: showPublicationDelay,
+                onChange: () => setShowPublicationDelay(!showPublicationDelay),
+                className: "mr-2",
+                disabled: activeView !== 'monthly'
+              }), /*#__PURE__*/_jsx("label", {
+                htmlFor: "publicationDelay",
+                className: activeView !== 'monthly' ? 'text-gray-400' : '',
+                children: "Account for 18-month Publication Delay"
+              })]
+            }), /*#__PURE__*/_jsxs("div", {
+              className: "flex items-center",
+              children: [/*#__PURE__*/_jsx("input", {
+                type: "checkbox",
+                id: "events",
+                checked: showEvents,
+                onChange: () => setShowEvents(!showEvents),
+                className: "mr-2"
+              }), /*#__PURE__*/_jsx("label", {
+                htmlFor: "events",
+                children: "Show NVIDIA AI Product Releases"
+              })]
+            }), /*#__PURE__*/_jsxs("div", {
+              className: "flex items-center",
+              children: [/*#__PURE__*/_jsx("input", {
+                type: "checkbox",
+                id: "aiPercentage",
+                checked: showAiPercentage,
+                onChange: () => setShowAiPercentage(!showAiPercentage),
+                className: "mr-2"
+              }), /*#__PURE__*/_jsx("label", {
+                htmlFor: "aiPercentage",
+                children: "Show AI as % of Total Patents"
+              })]
+            })]
+          })]
+        })
+      })]
+    }), /*#__PURE__*/_jsxs("div", {
+      className: "mb-4 border-t pt-4",
+      children: [/*#__PURE__*/_jsxs("div", {
+        className: "flex justify-between items-center mb-2",
+        children: [/*#__PURE__*/_jsx("label", {
+          className: "font-medium",
+          children: "CPC Categories:"
+        }), /*#__PURE__*/_jsxs("div", {
+          className: "space-x-2 text-sm",
+          children: [/*#__PURE__*/_jsx("button", {
+            className: "px-2 py-1 bg-purple-100 hover:bg-purple-200 rounded",
+            onClick: selectAiCategories,
+            children: "AI-Specific"
+          }), /*#__PURE__*/_jsx("button", {
+            className: "px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded",
+            onClick: () => selectTopCategories(5),
+            children: "Top 5"
+          }), /*#__PURE__*/_jsx("button", {
+            className: "px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded",
+            onClick: () => selectTopCategories(10),
+            children: "Top 10"
+          }), /*#__PURE__*/_jsx("button", {
+            className: "px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded",
+            onClick: clearCategories,
+            children: "Clear All"
+          })]
+        })]
+      }), /*#__PURE__*/_jsx("div", {
+        className: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-2 mt-2 max-h-48 overflow-y-auto",
+        children: data.categories.map((category, index) => /*#__PURE__*/_jsxs("div", {
+          className: "flex items-center",
+          children: [/*#__PURE__*/_jsx("input", {
+            type: "checkbox",
+            id: `category-${category}`,
+            checked: selectedCategories.includes(category),
+            onChange: () => toggleCategory(category),
+            className: "mr-2"
+          }), /*#__PURE__*/_jsxs("label", {
+            htmlFor: `category-${category}`,
+            className: "flex items-center cursor-pointer truncate",
+            children: [/*#__PURE__*/_jsx("span", {
+              className: "inline-block w-3 h-3 rounded-full mr-1",
+              style: {
+                backgroundColor: getColorForCategory(category)
+              }
+            }), /*#__PURE__*/_jsxs("span", {
+              className: "font-medium mr-1",
+              children: [category, ":"]
+            }), /*#__PURE__*/_jsx("span", {
+              className: "text-xs text-gray-600 truncate",
+              children: getDescriptionForCategory(category)
+            }), Object.keys(aiRelatedCpcCodes).some(code => category.startsWith(code)) && /*#__PURE__*/_jsx("span", {
+              className: "ml-1 text-xs bg-purple-100 text-purple-800 px-1 rounded",
+              children: "AI"
+            })]
+          })]
+        }, category))
+      })]
+    }), /*#__PURE__*/_jsx("div", {
+      className: "h-96 mt-8",
+      children: /*#__PURE__*/_jsx(ResponsiveContainer, {
+        width: "100%",
+        height: "100%",
+        children: renderMainChart()
+      })
+    }), /*#__PURE__*/_jsxs("div", {
+      className: "mt-6 text-sm",
+      children: [/*#__PURE__*/_jsx("h3", {
+        className: "font-bold mb-2",
+        children: "About this Visualization:"
+      }), /*#__PURE__*/_jsxs("p", {
+        className: "mb-2",
+        children: ["This chart highlights patent application trends specifically related to artificial intelligence technologies. It identifies AI-related patents using CPC classifications and textual analysis, then correlates these trends with NVIDIA's AI hardware innovations.", showPublicationDelay && activeView === 'monthly' ? " Data is adjusted to account for the 18-month publication delay between filing and publication." : "", showProjections && activeView === 'annual' ? " Projections for future years are based on historical AI patent growth trends." : ""]
+      }), showEvents && /*#__PURE__*/_jsxs("div", {
+        className: "mb-3",
+        children: [/*#__PURE__*/_jsx("h4", {
+          className: "font-semibold",
+          children: "Key NVIDIA AI Innovation Timeline:"
+        }), /*#__PURE__*/_jsx("p", {
+          className: "text-xs mb-1",
+          children: "Green vertical lines indicate NVIDIA's major AI-focused product releases and architecture launches."
+        }), /*#__PURE__*/_jsx("div", {
+          className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1 text-xs",
+          children: data.productReleases.filter((_, i) => i % 3 === 0 || i === data.productReleases.length - 1).map((release, index) => /*#__PURE__*/_jsxs("div", {
+            className: "flex items-center",
+            children: [/*#__PURE__*/_jsx("div", {
+              className: "w-2 h-2 bg-green-600 rounded-full mr-1"
+            }), /*#__PURE__*/_jsxs("span", {
+              className: "font-medium mr-1",
+              children: [release.date.substring(0, 7), ":"]
+            }), /*#__PURE__*/_jsx("span", {
+              children: release.name
+            })]
+          }, index))
+        })]
+      }), /*#__PURE__*/_jsx("p", {
+        className: "text-xs text-gray-500 mt-3",
+        children: "Note: Patents are identified as AI-related based on CPC classifications and text analysis of titles/claims. The visualization focuses on patents most relevant to artificial intelligence, machine learning, neural networks, and related computing technologies."
+      }), /*#__PURE__*/_jsx("p", {
+        className: "text-xs text-gray-500 mt-1",
+        children: "Data shows when applications were filed, not when patents were granted. Patents are typically published 18 months after filing."
+      })]
+    })]
+  });
+};
+export default AiPatentTrendsVisualization;
+    </script>
+</body>
+</html>
